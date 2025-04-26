@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/context/auth-context"
+import type { UserType } from "@/types"
 
 export default function SignupPage() {
   const [firstName, setFirstName] = useState("")
@@ -22,6 +24,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [userType, setUserType] = useState<UserType>("client")
   const [acceptTerms, setAcceptTerms] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
@@ -55,6 +58,7 @@ export default function SignupPage() {
       const { error } = await signUp(email, password, {
         first_name: firstName,
         last_name: lastName,
+        user_type: userType,
       })
 
       if (error) {
@@ -151,6 +155,23 @@ export default function SignupPage() {
                 required
                 minLength={6}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Account Type</Label>
+              <RadioGroup
+                value={userType}
+                onValueChange={(value) => setUserType(value as UserType)}
+                className="flex flex-col space-y-1"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="client" id="client" />
+                  <Label htmlFor="client">Client - Book services</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="business" id="business" />
+                  <Label htmlFor="business">Business - Offer services</Label>
+                </div>
+              </RadioGroup>
             </div>
             <div className="flex items-center space-x-2">
               <Checkbox
