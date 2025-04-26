@@ -74,15 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Helper function to fetch profile safely
   const fetchProfile = async (userId: string) => {
     try {
-      // First, check if the profiles table exists and what columns it has
-      const { data: tableInfo, error: tableError } = await supabase.from("profiles").select("*").limit(1)
-
-      if (tableError) {
-        console.error("Error checking profiles table:", tableError)
-        return null
-      }
-
-      // Now fetch the user's profile
+      // Fetch the user's profile
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -104,36 +96,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Helper function to create a profile safely
   const createProfile = async (userId: string, userData: User) => {
     try {
-      // Determine what columns exist in the profiles table
-      const { data: tableInfo, error: tableError } = await supabase.from("profiles").select("*").limit(1)
-
-      if (tableError) {
-        console.error("Error checking profiles table:", tableError)
-        return null
-      }
-
-      // Create a base profile object with just the ID
+      // Create a base profile with minimal fields to avoid schema issues
       const profileData: any = {
         id: userId,
       }
 
-      // Add fields that exist in the table and have values in user metadata
+      // Add user metadata if available
       if (userData.user_metadata) {
-        if ("first_name" in tableInfo[0]) {
-          profileData.first_name = userData.user_metadata.first_name || null
-        }
-        if ("last_name" in tableInfo[0]) {
-          profileData.last_name = userData.user_metadata.last_name || null
+        if (userData.user_metadata.first_name) {
+          profileData.first_name = userData.user_metadata.first_name
         }
 
-        // Check which column to use for user type
-        if ("user_type" in tableInfo[0]) {
+        if (userData.user_metadata.last_name) {
+          profileData.last_name = userData.user_metadata.last_name
+        }
+
+        // Try both column names for user type
+        try {
           profileData.user_type = userData.user_metadata.user_type || "client"
-        } else if ("type" in tableInfo[0]) {
-          profileData.type = userData.user_metadata.user_type || "client"
+        } catch (e) {
+          // If user_type column doesn't exist, try type
+          try {
+            profileData.type = userData.user_metadata.user_type || "client"
+          } catch (e) {
+            // If neither column exists, just continue
+            console.log("Neither user_type nor type column exists in profiles table")
+          }
         }
       }
 
+      // Insert the profile
       const { data: newProfile, error: createError } = await supabase
         .from("profiles")
         .insert([profileData])
