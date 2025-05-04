@@ -144,6 +144,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Helper function to handle auth errors
+  const handleAuthError = async (error: any) => {
+    console.error("Auth error:", error)
+
+    // Check if it's a refresh token error
+    if (error.code === "refresh_token_not_found" || error.message?.includes("refresh token")) {
+      console.log("Refresh token error detected, signing out")
+
+      // Clear the session state
+      setUser(null)
+      setSession(null)
+      setProfile(null)
+      setUserType(null)
+
+      // Sign out to clear any invalid tokens
+      try {
+        await supabase.auth.signOut()
+      } catch (signOutError) {
+        console.error("Error during sign out:", signOutError)
+      }
+    }
+  }
+
   useEffect(() => {
     const setData = async () => {
       try {
@@ -153,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = await supabase.auth.getSession()
 
         if (error) {
-          console.error(error)
+          await handleAuthError(error)
           setIsLoading(false)
           return
         }
@@ -186,44 +209,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (err) {
         console.error("Error in setData:", err)
+        if (err && typeof err === "object" && "code" in err) {
+          await handleAuthError(err)
+        }
       } finally {
         setIsLoading(false)
       }
     }
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
+      try {
+        setSession(session)
+        setUser(session?.user ?? null)
 
-      if (session?.user) {
-        // Fetch user profile
-        const profileData = await fetchProfile(session.user.id)
+        if (session?.user) {
+          // Fetch user profile
+          const profileData = await fetchProfile(session.user.id)
 
-        if (profileData) {
-          setProfile(profileData as Profile)
-          const userTypeValue = determineUserType(profileData, session.user)
-          setUserType(userTypeValue)
-        } else {
-          // Profile doesn't exist, create one
-          console.log("Profile not found, creating default profile")
-          const newProfile = await createProfile(session.user.id, session.user)
-
-          if (newProfile) {
-            setProfile(newProfile as Profile)
-            const userTypeValue = determineUserType(newProfile, session.user)
+          if (profileData) {
+            setProfile(profileData as Profile)
+            const userTypeValue = determineUserType(profileData, session.user)
             setUserType(userTypeValue)
+          } else {
+            // Profile doesn't exist, create one
+            console.log("Profile not found, creating default profile")
+            const newProfile = await createProfile(session.user.id, session.user)
+
+            if (newProfile) {
+              setProfile(newProfile as Profile)
+              const userTypeValue = determineUserType(newProfile, session.user)
+              setUserType(userTypeValue)
+            }
           }
+        } else {
+          setProfile(null)
+          setUserType(null)
         }
-      } else {
-        setProfile(null)
-        setUserType(null)
-      }
 
-      setIsLoading(false)
-
-      // Force a router refresh to update server components
-      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
-        router.refresh()
+        // Force a router refresh to update server components
+        if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+          router.refresh()
+        }
+      } catch (err) {
+        console.error("Error in auth state change:", err)
+        if (err && typeof err === "object" && "code" in err) {
+          await handleAuthError(err)
+        }
+      } finally {
+        setIsLoading(false)
       }
     })
 
@@ -239,40 +272,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     metadata?: { first_name?: string; last_name?: string; user_type?: UserType },
   ) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          ...metadata,
-          user_type: metadata?.user_type || "client",
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            ...metadata,
+            user_type: metadata?.user_type || "client",
+          },
         },
-      },
-    })
+      })
 
-    return { data, error }
+      return { data, error }
+    } catch (err) {
+      console.error("Error in signUp:", err)
+      if (err && typeof err === "object" && "code" in err) {
+        await handleAuthError(err)
+      }
+      return { data: null, error: err }
+    }
   }
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    return { data, error }
+      return { data, error }
+    } catch (err) {
+      console.error("Error in signIn:", err)
+      if (err && typeof err === "object" && "code" in err) {
+        await handleAuthError(err)
+      }
+      return { data: null, error: err }
+    }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    router.push("/")
+    try {
+      await supabase.auth.signOut()
+      router.push("/")
+    } catch (err) {
+      console.error("Error in signOut:", err)
+      // Even if sign out fails, clear the local state
+      setUser(null)
+      setSession(null)
+      setProfile(null)
+      setUserType(null)
+      router.push("/")
+    }
   }
 
   const resetPassword = async (email: string) => {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
+    try {
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
 
-    return { data, error }
+      return { data, error }
+    } catch (err) {
+      console.error("Error in resetPassword:", err)
+      if (err && typeof err === "object" && "code" in err) {
+        await handleAuthError(err)
+      }
+      return { data: null, error: err }
+    }
   }
 
   const isAdmin = userType === "admin"
